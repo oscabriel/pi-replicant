@@ -2,7 +2,7 @@
 
 Codebase exploration subagent extension for [pi](https://github.com/badlogic/pi-mono) coding agent using [Offworld](https://github.com/oscabriel/offworld) CLI.
 
-`replicant` keeps main-session context lean by delegating external repo exploration to an isolated in-process subagent session that can “go offworld” to explore distant code (i.e. use the [Offworld CLI](https://github.com/oscabriel/offworld) to resolve and access repositories outside your current working tree).
+`replicant` keeps main-session context lean by delegating external repo exploration to an isolated in-process subagent session that can “go offworld” to explore distant code (i.e. use the Offworld CLI to resolve and access repositories outside your current working tree).
 
 ## What it does
 
