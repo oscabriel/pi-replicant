@@ -24,6 +24,7 @@ type AgentDefinition = {
 type ReplicantToolDetails = {
    status: "running" | "done" | "error";
    repo?: string;
+   task?: string;
    qualifiedName?: string;
    scope?: string;
    clonePath?: string;
@@ -60,6 +61,16 @@ const DEFAULT_AGENT: AgentDefinition = {
 const RECON_TOOLS = ["read", "grep", "find", "ls"] as const;
 const MAX_TURNS = 10;
 const MAX_TOOL_CALLS = 60;
+
+const TASK_PREVIEW_MAX_CHARS = 90;
+
+function normalizeTaskForDisplay(task: unknown): string {
+   return typeof task === "string" ? task.replace(/\s+/g, " ").trim() : "";
+}
+
+function toTaskPreview(task: string, maxChars = TASK_PREVIEW_MAX_CHARS): string {
+   return task.length > maxChars ? `${task.slice(0, maxChars)}...` : task;
+}
 
 function toolsForAgent(agent: AgentDefinition): string[] {
    const selected = RECON_TOOLS.filter((tool) => agent.tools.includes(tool));
@@ -213,6 +224,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
       async execute(_toolCallId, rawParams, signal, onUpdate, ctx) {
          let resolvedRepo: ResolvedRepo | undefined;
          let subprocessDetails: ReplicantSubprocessDetails | undefined;
+         let displayTask: string | undefined;
 
          const emit = (statusText: string, details: ReplicantToolDetails) => {
             onUpdate?.({
@@ -223,6 +235,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
 
          try {
             const params = validateParams(rawParams as ReplicantParams);
+            displayTask = normalizeTaskForDisplay(params.task);
             const maxTurns = MAX_TURNS;
             const maxToolCalls = MAX_TOOL_CALLS;
 
@@ -233,6 +246,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
             emit("replicant: resolving Offworld map", {
                status: "running",
                phase: "booting",
+               task: displayTask,
             });
 
             resolvedRepo = await resolveRepoWithOffworld({
@@ -248,6 +262,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
                      phase: "booting",
                      repo: resolvedRepo?.repo,
                      searchCandidates: resolvedRepo?.searchCandidates,
+                     task: displayTask,
                   });
                },
             });
@@ -273,6 +288,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
                   subprocessDetails = details;
                   emit(statusText, {
                      status: "running",
+                     task: displayTask,
                      repo: resolvedRepo?.repo,
                      qualifiedName: resolvedRepo?.qualifiedName,
                      scope: resolvedRepo?.scope,
@@ -292,6 +308,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
                content: [{ type: "text", text: runResult.finalText }],
                details: {
                   status: "done",
+                  task: displayTask,
                   repo: resolvedRepo.repo,
                   qualifiedName: resolvedRepo.qualifiedName,
                   scope: resolvedRepo.scope,
@@ -311,6 +328,7 @@ export default function replicantExtension(pi: ExtensionAPI) {
                content: [{ type: "text", text: remediation ? `${message}\n\n${remediation}` : message }],
                details: {
                   status: "error",
+                  task: displayTask,
                   repo: resolvedRepo?.repo,
                   qualifiedName: resolvedRepo?.qualifiedName,
                   scope: resolvedRepo?.scope,
@@ -329,47 +347,38 @@ export default function replicantExtension(pi: ExtensionAPI) {
 
       renderCall(args, theme) {
          const repo = typeof args.repo === "string" ? args.repo : "(auto)";
-         const task = typeof args.task === "string" ? args.task.replace(/\s+/g, " ").trim() : "";
-         const taskPreview = task.length > 90 ? `${task.slice(0, 90)}...` : task;
-         const text = [
-            `${theme.fg("toolTitle", theme.bold("replicant"))} ${theme.fg("accent", repo)}`,
-            theme.fg("dim", taskPreview || "(no task)"),
-         ].join("\n");
-         return new Text(text, 0, 0);
+         return new Text(`${theme.fg("toolTitle", theme.bold("replicant"))} ${theme.fg("accent", repo)}`, 0, 0);
       },
-
       renderResult(result, { expanded }, theme) {
          const details = result.details as ReplicantToolDetails | undefined;
          const content = result.content[0];
          const text = content?.type === "text" ? content.text : "(no output)";
-
          if (!details) {
             return new Text(text, 0, 0);
          }
-
          const icon =
             details.status === "done"
                ? theme.fg("success", "✓")
                : details.status === "error"
                   ? theme.fg("error", "✗")
                   : theme.fg("warning", "⏳");
-
-         const header = `${icon} ${theme.fg("toolTitle", theme.bold("replicant"))} ${theme.fg("accent", details.repo ?? "(unknown repo)")}`;
+         const header = `${icon} ${theme.fg("toolTitle", theme.bold("going offworld to..."))} ${theme.fg("accent", details.repo ?? "(unknown repo)")}`;
+         const task = normalizeTaskForDisplay(details.task);
+         const taskCollapsed = toTaskPreview(task) || "(no task)";
+         const taskExpanded = task || "(no task)";
          const paths = [
             details.referencePath ? `${theme.fg("muted", "ref:")} ${theme.fg("toolOutput", details.referencePath)}` : undefined,
             details.clonePath ? `${theme.fg("muted", "path:")} ${theme.fg("toolOutput", details.clonePath)}` : undefined,
          ].filter(Boolean) as string[];
-
          const toolCallLines = formatToolCallLines(details.subprocess, details.clonePath, details.referencePath);
          const shouldRenderStatusText = details.status !== "running" || !details.subprocess;
-
          if (!expanded) {
             const previewLines = text.split("\n");
             const collapsedStatusMaxLines = details.status === "done" && details.subprocess ? 4 : 12;
             const preview = previewLines.slice(0, collapsedStatusMaxLines).join("\n");
             const previewTruncated = previewLines.length > collapsedStatusMaxLines;
             const hideStatusPreview = details.status === "done" && details.subprocess;
-            const collapsedLines = [header, ...paths];
+            const collapsedLines = [header, theme.fg("dim", taskCollapsed), ...paths];
             if (details.subprocess) {
                collapsedLines.push("", theme.fg("dim", `tool calls=${details.subprocess.toolCalls} errors=${details.subprocess.toolErrors}`));
                const visibleToolCalls = toolCallLines.slice(-8);
@@ -381,22 +390,21 @@ export default function replicantExtension(pi: ExtensionAPI) {
             if (shouldRenderStatusText) {
                collapsedLines.push("");
                if (hideStatusPreview) {
-                  collapsedLines.push(theme.fg("dim", "[final output hidden in collapsed view — press ctrl+o to expand]"));
+                  collapsedLines.push(theme.fg("dim", "[ctrl+o to expand]"));
                } else {
                   collapsedLines.push(theme.fg("toolOutput", preview));
                   if (previewTruncated) {
-                     collapsedLines.push(theme.fg("dim", "[truncated in collapsed view — press ctrl+o to expand]"));
+                     collapsedLines.push(theme.fg("dim", "[ctrl+o to expand]"));
                   }
                }
             }
             return new Text(collapsedLines.join("\n"), 0, 0);
          }
-
          const mdTheme = getMarkdownTheme();
          const container = new Container();
          container.addChild(new Text(header, 0, 0));
+         container.addChild(new Text(theme.fg("dim", taskExpanded), 0, 0));
          for (const line of paths) container.addChild(new Text(line, 0, 0));
-
          if (details.subprocess) {
             container.addChild(new Spacer(1));
             container.addChild(new Text(theme.fg("dim", `tool calls=${details.subprocess.toolCalls} errors=${details.subprocess.toolErrors}`), 0, 0));
