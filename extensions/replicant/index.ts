@@ -1,6 +1,6 @@
-import { type ExtensionAPI, type ExtensionContext, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
-import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
+import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { ReplicantOffworldError, resolveRepoWithOffworld, type ResolvedRepo } from "./offworld";
 import {
    ReplicantParamsSchema,

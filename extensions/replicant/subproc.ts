@@ -9,9 +9,10 @@ import {
    createGrepTool,
    createLsTool,
    createReadTool,
+   getAgentDir,
    truncateHead,
    type ExtensionFactory,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 const MAX_FINAL_TEXT_BYTES = DEFAULT_MAX_BYTES;
 const MAX_FINAL_TEXT_LINES = DEFAULT_MAX_LINES;
@@ -312,10 +313,13 @@ function getLastAssistantMessage(messages: any[]): any | undefined {
 async function createDefaultSession(input: ReplicantSessionFactoryInput): Promise<ReplicantSessionLike> {
    const scope = resolveScope(input.cwd, input.scope);
    const resourceLoader = new DefaultResourceLoader({
+      cwd: input.cwd,
+      agentDir: getAgentDir(),
       noExtensions: true,
       noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
+      noContextFiles: true,
       extensionFactories: [createPolicyExtension(scope, input.maxTurns, input.maxToolCalls, input.policyState)],
       systemPromptOverride: () => input.systemPrompt,
       skillsOverride: () => ({ skills: [], diagnostics: [] }),
