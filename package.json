@@ -1,6 +1,6 @@
 {
   "name": "pi-replicant",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Codebase exploration subagent extension for pi using Offworld CLI",
   "type": "module",
   "keywords": [

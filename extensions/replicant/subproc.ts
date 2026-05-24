@@ -5,10 +5,6 @@ import {
    DefaultResourceLoader,
    SessionManager,
    createAgentSession,
-   createFindTool,
-   createGrepTool,
-   createLsTool,
-   createReadTool,
    getAgentDir,
    truncateHead,
    type ExtensionFactory,
@@ -268,35 +264,19 @@ function parseModel(model?: string): { provider?: string; modelId: string } | un
    return { provider, modelId };
 }
 
-function createReadOnlyToolsForSession(cwd: string, toolNames: string[]) {
-   const selected: any[] = [];
+function createReadOnlyToolAllowlist(toolNames: string[]): string[] {
+   const selected: string[] = [];
    const seen = new Set<string>();
 
    for (const toolName of toolNames) {
       if (seen.has(toolName)) continue;
       seen.add(toolName);
 
-      if (toolName === "read") {
-         selected.push(createReadTool(cwd));
-         continue;
+      if (!["read", "grep", "find", "ls"].includes(toolName)) {
+         throw new Error(`Replicant subagent requested unsupported tool: ${toolName}`);
       }
 
-      if (toolName === "grep") {
-         selected.push(createGrepTool(cwd));
-         continue;
-      }
-
-      if (toolName === "find") {
-         selected.push(createFindTool(cwd));
-         continue;
-      }
-
-      if (toolName === "ls") {
-         selected.push(createLsTool(cwd));
-         continue;
-      }
-
-      throw new Error(`Replicant subagent requested unsupported tool: ${toolName}`);
+      selected.push(toolName);
    }
 
    return selected;
@@ -331,7 +311,7 @@ async function createDefaultSession(input: ReplicantSessionFactoryInput): Promis
       cwd: input.cwd,
       resourceLoader,
       sessionManager: SessionManager.inMemory(input.cwd),
-      tools: createReadOnlyToolsForSession(input.cwd, input.tools),
+      tools: createReadOnlyToolAllowlist(input.tools),
    });
 
    const requestedModel = parseModel(input.model);
@@ -506,6 +486,13 @@ export async function runReplicantSubprocess(options: RunReplicantSubprocessOpti
          details.phase = "aborted";
          details.exitCode = 1;
          throw new Error("Replicant subagent was aborted.");
+      }
+
+      if (details.toolCalls > 0 && details.toolErrors === details.toolCalls) {
+         details.phase = "error";
+         details.errorMessage = `Replicant subagent failed all ${details.toolCalls} tool call${details.toolCalls === 1 ? "" : "s"}; no repository evidence was gathered.`;
+         details.exitCode = 1;
+         throw new Error(details.errorMessage);
       }
 
       if (promptError) {

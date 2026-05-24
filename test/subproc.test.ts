@@ -82,6 +82,30 @@ test("runReplicantSubprocess truncates final assistant output to 2000 lines", as
    assert.match(result.finalText, /\[replicant output truncated\]/);
 });
 
+test("runReplicantSubprocess treats all-failed tool calls as a failure even with assistant text", async () => {
+   await assert.rejects(
+      () =>
+         runReplicantSubprocess({
+            cwd: process.cwd(),
+            systemPrompt: "sys",
+            taskPrompt: "task",
+            tools: ["read"],
+            sessionFactory: makeFactory(async (session) => {
+               session.emit({ type: "tool_execution_start", toolName: "read", args: { path: "README.md" } });
+               session.emit({ type: "tool_execution_end", toolName: "read", isError: true });
+               const message = {
+                  role: "assistant",
+                  content: [{ type: "text", text: "I cannot access the filesystem tools." }],
+                  stopReason: "end_turn",
+               };
+               session.state.messages.push(message);
+               session.emit({ type: "message_end", message });
+            }),
+         }),
+      /failed all 1 tool call/,
+   );
+});
+
 test("runReplicantSubprocess treats stopReason=error as a failure", async () => {
    await assert.rejects(
       () =>
